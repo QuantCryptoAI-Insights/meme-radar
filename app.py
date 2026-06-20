@@ -44,12 +44,11 @@ def get_coingecko_data():
 
     result = {}
     
-    # Build the CoinGecko URL
     ids = ','.join([c['id'] for c in COINS])
     coin_gecko_url = f'https://api.coingecko.com/api/v3/simple/price?ids={ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&include_24hr_vol=true'
     
-    # Try through CORS proxy (Render-friendly)
-    proxy_url = f'https://corsproxy.io/?{coin_gecko_url}'
+    # Use a different proxy that works on Render
+    proxy_url = f'https://api.allorigins.win/get?url={coin_gecko_url}'
     
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -61,24 +60,29 @@ def get_coingecko_data():
         print(f"Proxy status: {resp.status_code}")
         
         if resp.status_code == 200:
-            price_data = resp.json()
-            for coin_id, data in price_data.items():
-                result[coin_id] = {
-                    'id': coin_id,
-                    'current_price': data.get('usd', 0.0),
-                    'price_change_percentage_24h': data.get('usd_24h_change', 0.0),
-                    'market_cap': data.get('usd_market_cap', 0),
-                    'total_volume': data.get('usd_24h_vol', 0),
-                    'sparkline_in_7d': {'price': []}
-                }
-            print(f"Got prices for {len(result)} coins via proxy")
+            data = resp.json()
+            if 'contents' in data:
+                import json
+                price_data = json.loads(data['contents'])
+                for coin_id, values in price_data.items():
+                    result[coin_id] = {
+                        'id': coin_id,
+                        'current_price': values.get('usd', 0.0),
+                        'price_change_percentage_24h': values.get('usd_24h_change', 0.0),
+                        'market_cap': values.get('usd_market_cap', 0),
+                        'total_volume': values.get('usd_24h_vol', 0),
+                        'sparkline_in_7d': {'price': []}
+                    }
+                print(f"Got prices for {len(result)} coins via proxy")
+            else:
+                print("Proxy returned no contents")
         else:
             print(f"Proxy failed: {resp.status_code}")
     except Exception as e:
         print(f"Proxy error: {e}")
         traceback.print_exc()
 
-    # If proxy fails, try direct CoinGecko (might work sometimes)
+    # Fallback: try direct CoinGecko
     if not result:
         try:
             print("Trying direct CoinGecko...")
@@ -98,7 +102,7 @@ def get_coingecko_data():
         except Exception as e:
             print(f"Direct CoinGecko error: {e}")
 
-    # Get sparklines (only for top coins, to avoid rate limits)
+    # Get sparklines (only for top coins)
     if result:
         sparkline_coins = ['bonk', 'dogwifhat', 'popcat', 'slerf', 'myro', 'wen', 'pepe', 'dogecoin', 'shiba-inu']
         for coin_id in sparkline_coins:
@@ -106,13 +110,18 @@ def get_coingecko_data():
                 continue
             try:
                 chart_url = f'https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart?vs_currency=usd&days=7'
-                proxy_chart_url = f'https://corsproxy.io/?{chart_url}'
+                proxy_chart_url = f'https://api.allorigins.win/get?url={chart_url}'
                 resp = requests.get(proxy_chart_url, timeout=10, headers=headers)
                 if resp.status_code == 200:
-                    chart_data = resp.json()
-                    prices = [p[1] for p in chart_data.get('prices', [])]
-                    result[coin_id]['sparkline_in_7d'] = {'price': prices}
-                    print(f"Got sparkline for {coin_id} ({len(prices)} points)")
+                    data = resp.json()
+                    if 'contents' in data:
+                        import json
+                        chart_data = json.loads(data['contents'])
+                        prices = [p[1] for p in chart_data.get('prices', [])]
+                        result[coin_id]['sparkline_in_7d'] = {'price': prices}
+                        print(f"Got sparkline for {coin_id} ({len(prices)} points)")
+                    else:
+                        print(f"Sparkline proxy returned no contents for {coin_id}")
                 else:
                     print(f"Sparkline failed for {coin_id}: {resp.status_code}")
                 time.sleep(0.3)
@@ -150,13 +159,20 @@ def index():
 def test():
     try:
         url = 'https://api.coingecko.com/api/v3/simple/price?ids=bonk&vs_currencies=usd'
-        proxy_url = f'https://corsproxy.io/?{url}'
+        proxy_url = f'https://api.allorigins.win/get?url={url}'
         headers = {'User-Agent': 'Mozilla/5.0'}
         resp = requests.get(proxy_url, timeout=10, headers=headers)
-        return jsonify({
-            'status': resp.status_code,
-            'data': resp.json() if resp.status_code == 200 else resp.text
-        })
+        if resp.status_code == 200:
+            import json
+            data = resp.json()
+            if 'contents' in data:
+                return jsonify({
+                    'status': 200,
+                    'data': json.loads(data['contents'])
+                })
+            else:
+                return jsonify({'status': resp.status_code, 'error': 'No contents'})
+        return jsonify({'status': resp.status_code, 'error': resp.text})
     except Exception as e:
         return jsonify({'error': str(e)})
 

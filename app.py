@@ -209,7 +209,9 @@ def top_gainers():
     return jsonify(sorted_data[:3])
 
 if __name__ == '__main__':
+    import os
+    port = int(os.environ.get('PORT', 5000))
     print("🚀 MemeRadar Pro v3.0 starting...")
     print(f"📊 Loaded {len(COINS)} coins")
-    print("🔗 Access at http://127.0.0.1:5000")
-    app.run(debug=True, port=5000, threaded=True)
+    print(f"🔗 Access on port {port}")
+    app.run(host='0.0.0.0', port=port, debug=False)

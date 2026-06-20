@@ -2,6 +2,7 @@ import os
 import requests
 import statistics
 import traceback
+import time
 from flask import Flask, render_template, jsonify
 from dotenv import load_dotenv
 from cachetools import TTLCache
@@ -9,9 +10,9 @@ from cachetools import TTLCache
 load_dotenv()
 
 app = Flask(__name__)
-cache = TTLCache(maxsize=100, ttl=60)
+cache = TTLCache(maxsize=100, ttl=120)
 
-# -------- COINS (20 coins, verified IDs) --------
+# -------- COINS (20 coins) --------
 COINS = [
     {"id": "bonk", "name": "Bonk", "symbol": "BONK", "chain": "Solana", "logo": "https://assets.coingecko.com/coins/images/28600/large/bonk.jpg", "story": "Community-driven dog coin.", "why_popular": "Massive airdrop.", "social": {"twitter": "https://twitter.com/bonk_inu", "website": "https://bonkcoin.com", "telegram": "https://t.me/bonk_sol"}, "category": "Dog Coin"},
     {"id": "dogwifhat", "name": "Dogwifhat", "symbol": "WIF", "chain": "Solana", "logo": "https://assets.coingecko.com/coins/images/32588/large/dogwifhat.jpg", "story": "Dog with a hat.", "why_popular": "Iconic branding.", "social": {"twitter": "https://twitter.com/dogwifcoin", "website": "https://dogwifhat.net", "telegram": "https://t.me/dogwifhat"}, "category": "Dog Coin"},
@@ -35,92 +36,95 @@ COINS = [
     {"id": "memecoin", "name": "Memecoin", "symbol": "MEME", "chain": "Ethereum", "logo": "https://assets.coingecko.com/coins/images/28923/large/memecoin.png", "story": "The meme to rule them all.", "why_popular": "9GAG backing.", "social": {"twitter": "https://twitter.com/memecoin", "website": "https://memecoin.com", "telegram": ""}, "category": "Meme"}
 ]
 
-# -------- FETCH COINGECKO DATA (with fallback to CoinCap) --------
+# -------- FETCH COINGECKO DATA (USING PROXY) --------
 def get_coingecko_data():
     cache_key = 'coingecko'
     if cache_key in cache:
         return cache[cache_key]
 
-    # Try CoinCap first (free, no rate limit for small requests)
-    try:
-        print("Fetching from CoinCap...")
-        # CoinCap uses different IDs, so we map manually
-        coin_map = {
-            'bonk': 'bonk',
-            'dogwifhat': 'dogwifhat',
-            'popcat': 'popcat',
-            'slerf': 'slerf',
-            'myro': 'myro',
-            'wen': 'wen',
-            'cat-in-a-dogs-world': 'mew',
-            'pepe': 'pepe',
-            'book-of-meme': 'bome',
-            'dogecoin': 'dogecoin',
-            'shiba-inu': 'shiba-inu',
-            'floki': 'floki',
-            'mog-coin': 'mog',
-            'coq-inu': 'coq',
-            'brett': 'brett',
-            'toshi': 'toshi',
-            'neiro': 'neiro',
-            'turbo': 'turbo',
-            'andy': 'andy',
-            'memecoin': 'memecoin'
-        }
-        # CoinCap asset IDs (use the symbol)
-        symbols = [coin_map.get(c['id'], c['symbol'].lower()) for c in COINS]
-        ids_param = ','.join(symbols)
-        url = f'https://api.coincap.io/v2/assets?ids={ids_param}'
-        resp = requests.get(url, timeout=10)
-        if resp.status_code == 200:
-            data = resp.json()
-            if 'data' in data:
-                result = {}
-                for item in data['data']:
-                    # Find matching coin ID from our list
-                    for coin in COINS:
-                        if coin['symbol'].lower() == item['id'].lower():
-                            result[coin['id']] = {
-                                'id': coin['id'],
-                                'current_price': float(item['priceUsd']),
-                                'price_change_percentage_24h': float(item['changePercent24Hr']) if 'changePercent24Hr' in item else 0.0,
-                                'total_volume': float(item['volumeUsd24Hr']) if 'volumeUsd24Hr' in item else 0,
-                                'market_cap': float(item['marketCapUsd']) if 'marketCapUsd' in item else 0,
-                                'sparkline_in_7d': {'price': []}  # CoinCap doesn't provide sparklines
-                            }
-                            break
-                if result:
-                    cache[cache_key] = result
-                    print(f"CoinCap returned {len(result)} coins")
-                    return result
-                else:
-                    print("CoinCap returned empty result")
-    except Exception as e:
-        print(f"CoinCap error: {e}")
-
-    # Fallback: CoinGecko (with retry logic)
+    result = {}
+    
+    # Build the CoinGecko URL
     ids = ','.join([c['id'] for c in COINS])
-    url = f'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids={ids}&order=market_cap_desc&per_page=250&page=1&sparkline=true'
+    coin_gecko_url = f'https://api.coingecko.com/api/v3/simple/price?ids={ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&include_24hr_vol=true'
+    
+    # Try through CORS proxy (Render-friendly)
+    proxy_url = f'https://corsproxy.io/?{coin_gecko_url}'
+    
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
+    
     try:
-        print("Falling back to CoinGecko...")
-        resp = requests.get(url, timeout=15, headers=headers)
-        print(f"CoinGecko status: {resp.status_code}")
+        print(f"Fetching prices via proxy for {len(COINS)} coins...")
+        resp = requests.get(proxy_url, timeout=15, headers=headers)
+        print(f"Proxy status: {resp.status_code}")
+        
         if resp.status_code == 200:
-            data = resp.json()
-            print(f"CoinGecko returned {len(data)} coins")
-            result = {item['id']: item for item in data}
-            cache[cache_key] = result
-            return result
+            price_data = resp.json()
+            for coin_id, data in price_data.items():
+                result[coin_id] = {
+                    'id': coin_id,
+                    'current_price': data.get('usd', 0.0),
+                    'price_change_percentage_24h': data.get('usd_24h_change', 0.0),
+                    'market_cap': data.get('usd_market_cap', 0),
+                    'total_volume': data.get('usd_24h_vol', 0),
+                    'sparkline_in_7d': {'price': []}
+                }
+            print(f"Got prices for {len(result)} coins via proxy")
         else:
-            print(f"CoinGecko failed: {resp.status_code}")
+            print(f"Proxy failed: {resp.status_code}")
     except Exception as e:
-        print(f"CoinGecko error: {e}")
+        print(f"Proxy error: {e}")
         traceback.print_exc()
 
-    return {}
+    # If proxy fails, try direct CoinGecko (might work sometimes)
+    if not result:
+        try:
+            print("Trying direct CoinGecko...")
+            resp = requests.get(coin_gecko_url, timeout=10, headers=headers)
+            if resp.status_code == 200:
+                price_data = resp.json()
+                for coin_id, data in price_data.items():
+                    result[coin_id] = {
+                        'id': coin_id,
+                        'current_price': data.get('usd', 0.0),
+                        'price_change_percentage_24h': data.get('usd_24h_change', 0.0),
+                        'market_cap': data.get('usd_market_cap', 0),
+                        'total_volume': data.get('usd_24h_vol', 0),
+                        'sparkline_in_7d': {'price': []}
+                    }
+                print(f"Got prices for {len(result)} coins directly")
+        except Exception as e:
+            print(f"Direct CoinGecko error: {e}")
+
+    # Get sparklines (only for top coins, to avoid rate limits)
+    if result:
+        sparkline_coins = ['bonk', 'dogwifhat', 'popcat', 'slerf', 'myro', 'wen', 'pepe', 'dogecoin', 'shiba-inu']
+        for coin_id in sparkline_coins:
+            if coin_id not in result:
+                continue
+            try:
+                chart_url = f'https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart?vs_currency=usd&days=7'
+                proxy_chart_url = f'https://corsproxy.io/?{chart_url}'
+                resp = requests.get(proxy_chart_url, timeout=10, headers=headers)
+                if resp.status_code == 200:
+                    chart_data = resp.json()
+                    prices = [p[1] for p in chart_data.get('prices', [])]
+                    result[coin_id]['sparkline_in_7d'] = {'price': prices}
+                    print(f"Got sparkline for {coin_id} ({len(prices)} points)")
+                else:
+                    print(f"Sparkline failed for {coin_id}: {resp.status_code}")
+                time.sleep(0.3)
+            except Exception as e:
+                print(f"Sparkline error for {coin_id}: {e}")
+
+        cache[cache_key] = result
+        print(f"Cached {len(result)} coins")
+    else:
+        print("No data fetched from CoinGecko")
+
+    return result
 
 # -------- UTILITY FUNCTIONS --------
 def calculate_risk_reward(sparkline, price, change_24h):
@@ -144,11 +148,15 @@ def index():
 
 @app.route('/test')
 def test():
-    # Simple test to show CoinCap data
     try:
-        url = 'https://api.coincap.io/v2/assets/bitcoin'
-        resp = requests.get(url, timeout=5)
-        return jsonify({'status': resp.status_code, 'data': resp.json()})
+        url = 'https://api.coingecko.com/api/v3/simple/price?ids=bonk&vs_currencies=usd'
+        proxy_url = f'https://corsproxy.io/?{url}'
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        resp = requests.get(proxy_url, timeout=10, headers=headers)
+        return jsonify({
+            'status': resp.status_code,
+            'data': resp.json() if resp.status_code == 200 else resp.text
+        })
     except Exception as e:
         return jsonify({'error': str(e)})
 

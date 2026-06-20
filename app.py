@@ -35,32 +35,91 @@ COINS = [
     {"id": "memecoin", "name": "Memecoin", "symbol": "MEME", "chain": "Ethereum", "logo": "https://assets.coingecko.com/coins/images/28923/large/memecoin.png", "story": "The meme to rule them all.", "why_popular": "9GAG backing.", "social": {"twitter": "https://twitter.com/memecoin", "website": "https://memecoin.com", "telegram": ""}, "category": "Meme"}
 ]
 
-# -------- FETCH COINGECKO DATA --------
+# -------- FETCH COINGECKO DATA (with fallback to CoinCap) --------
 def get_coingecko_data():
     cache_key = 'coingecko'
     if cache_key in cache:
         return cache[cache_key]
 
+    # Try CoinCap first (free, no rate limit for small requests)
+    try:
+        print("Fetching from CoinCap...")
+        # CoinCap uses different IDs, so we map manually
+        coin_map = {
+            'bonk': 'bonk',
+            'dogwifhat': 'dogwifhat',
+            'popcat': 'popcat',
+            'slerf': 'slerf',
+            'myro': 'myro',
+            'wen': 'wen',
+            'cat-in-a-dogs-world': 'mew',
+            'pepe': 'pepe',
+            'book-of-meme': 'bome',
+            'dogecoin': 'dogecoin',
+            'shiba-inu': 'shiba-inu',
+            'floki': 'floki',
+            'mog-coin': 'mog',
+            'coq-inu': 'coq',
+            'brett': 'brett',
+            'toshi': 'toshi',
+            'neiro': 'neiro',
+            'turbo': 'turbo',
+            'andy': 'andy',
+            'memecoin': 'memecoin'
+        }
+        # CoinCap asset IDs (use the symbol)
+        symbols = [coin_map.get(c['id'], c['symbol'].lower()) for c in COINS]
+        ids_param = ','.join(symbols)
+        url = f'https://api.coincap.io/v2/assets?ids={ids_param}'
+        resp = requests.get(url, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            if 'data' in data:
+                result = {}
+                for item in data['data']:
+                    # Find matching coin ID from our list
+                    for coin in COINS:
+                        if coin['symbol'].lower() == item['id'].lower():
+                            result[coin['id']] = {
+                                'id': coin['id'],
+                                'current_price': float(item['priceUsd']),
+                                'price_change_percentage_24h': float(item['changePercent24Hr']) if 'changePercent24Hr' in item else 0.0,
+                                'total_volume': float(item['volumeUsd24Hr']) if 'volumeUsd24Hr' in item else 0,
+                                'market_cap': float(item['marketCapUsd']) if 'marketCapUsd' in item else 0,
+                                'sparkline_in_7d': {'price': []}  # CoinCap doesn't provide sparklines
+                            }
+                            break
+                if result:
+                    cache[cache_key] = result
+                    print(f"CoinCap returned {len(result)} coins")
+                    return result
+                else:
+                    print("CoinCap returned empty result")
+    except Exception as e:
+        print(f"CoinCap error: {e}")
+
+    # Fallback: CoinGecko (with retry logic)
     ids = ','.join([c['id'] for c in COINS])
     url = f'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids={ids}&order=market_cap_desc&per_page=250&page=1&sparkline=true'
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
     try:
-        print(f"Fetching CoinGecko data for {len(COINS)} coins...")
+        print("Falling back to CoinGecko...")
         resp = requests.get(url, timeout=15, headers=headers)
         print(f"CoinGecko status: {resp.status_code}")
         if resp.status_code == 200:
             data = resp.json()
-            print(f"Received {len(data)} coins")
+            print(f"CoinGecko returned {len(data)} coins")
             result = {item['id']: item for item in data}
             cache[cache_key] = result
             return result
         else:
-            print(f"CoinGecko failed: {resp.status_code} - {resp.text[:200]}")
+            print(f"CoinGecko failed: {resp.status_code}")
     except Exception as e:
         print(f"CoinGecko error: {e}")
         traceback.print_exc()
+
     return {}
 
 # -------- UTILITY FUNCTIONS --------
@@ -85,14 +144,11 @@ def index():
 
 @app.route('/test')
 def test():
-    url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bonk&order=market_cap_desc&per_page=1&page=1&sparkline=false'
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    # Simple test to show CoinCap data
     try:
-        r = requests.get(url, timeout=10, headers=headers)
-        return jsonify({
-            'status': r.status_code,
-            'data': r.json()
-        })
+        url = 'https://api.coincap.io/v2/assets/bitcoin'
+        resp = requests.get(url, timeout=5)
+        return jsonify({'status': resp.status_code, 'data': resp.json()})
     except Exception as e:
         return jsonify({'error': str(e)})
 

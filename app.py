@@ -35,7 +35,7 @@ COINS = [
     {"id": "memecoin", "name": "Memecoin", "symbol": "MEME", "chain": "Ethereum", "logo": "https://assets.coingecko.com/coins/images/28923/large/memecoin.png", "story": "The meme to rule them all.", "why_popular": "9GAG backing.", "social": {"twitter": "https://twitter.com/memecoin", "website": "https://memecoin.com", "telegram": ""}, "category": "Meme"}
 ]
 
-# -------- FETCH COINGECKO DATA (FIXED) --------
+# -------- FETCH COINGECKO DATA --------
 def get_coingecko_data():
     cache_key = 'coingecko'
     if cache_key in cache:
@@ -83,6 +83,19 @@ def calculate_risk_reward(sparkline, price, change_24h):
 def index():
     return render_template('index.html')
 
+@app.route('/test')
+def test():
+    url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bonk&order=market_cap_desc&per_page=1&page=1&sparkline=false'
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    try:
+        r = requests.get(url, timeout=10, headers=headers)
+        return jsonify({
+            'status': r.status_code,
+            'data': r.json()
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
 @app.route('/api/dashboard')
 def dashboard():
     cg_data = get_coingecko_data()
@@ -96,7 +109,6 @@ def dashboard():
         mcap = cg.get('market_cap', 0)
         sparkline = cg.get('sparkline_in_7d', {}).get('price', [])
 
-        # Twitter/LunarCrush would go here, but we skip for now
         mentions = 0
 
         risk_score, reward_score, change_7d = calculate_risk_reward(sparkline, price, change_24h)
@@ -141,6 +153,5 @@ def dashboard():
     return jsonify(final_results)
 
 if __name__ == '__main__':
-    import os
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)

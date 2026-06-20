@@ -9,15 +9,9 @@ from cachetools import TTLCache
 load_dotenv()
 
 app = Flask(__name__)
-
-# -------- CACHE --------
 cache = TTLCache(maxsize=100, ttl=60)
 
-# -------- CONFIG --------
-LUNARCRUSH_KEY = os.getenv('LUNARCRUSH_API_KEY')
-TWITTER_BEARER = os.getenv('TWITTER_BEARER_TOKEN')
-
-# -------- COIN DATABASE --------
+# -------- COINS (20 coins, verified IDs) --------
 COINS = [
     {"id": "bonk", "name": "Bonk", "symbol": "BONK", "chain": "Solana", "logo": "https://assets.coingecko.com/coins/images/28600/large/bonk.jpg", "story": "Community-driven dog coin.", "why_popular": "Massive airdrop.", "social": {"twitter": "https://twitter.com/bonk_inu", "website": "https://bonkcoin.com", "telegram": "https://t.me/bonk_sol"}, "category": "Dog Coin"},
     {"id": "dogwifhat", "name": "Dogwifhat", "symbol": "WIF", "chain": "Solana", "logo": "https://assets.coingecko.com/coins/images/32588/large/dogwifhat.jpg", "story": "Dog with a hat.", "why_popular": "Iconic branding.", "social": {"twitter": "https://twitter.com/dogwifcoin", "website": "https://dogwifhat.net", "telegram": "https://t.me/dogwifhat"}, "category": "Dog Coin"},
@@ -41,7 +35,7 @@ COINS = [
     {"id": "memecoin", "name": "Memecoin", "symbol": "MEME", "chain": "Ethereum", "logo": "https://assets.coingecko.com/coins/images/28923/large/memecoin.png", "story": "The meme to rule them all.", "why_popular": "9GAG backing.", "social": {"twitter": "https://twitter.com/memecoin", "website": "https://memecoin.com", "telegram": ""}, "category": "Meme"}
 ]
 
-# -------- FETCH FUNCTIONS --------
+# -------- FETCH COINGECKO DATA (FIXED) --------
 def get_coingecko_data():
     cache_key = 'coingecko'
     if cache_key in cache:
@@ -49,74 +43,39 @@ def get_coingecko_data():
 
     ids = ','.join([c['id'] for c in COINS])
     url = f'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids={ids}&order=market_cap_desc&per_page=250&page=1&sparkline=true'
-
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
-
     try:
         print(f"Fetching CoinGecko data for {len(COINS)} coins...")
         resp = requests.get(url, timeout=15, headers=headers)
-        print(f"CoinGecko response status: {resp.status_code}")
-
+        print(f"CoinGecko status: {resp.status_code}")
         if resp.status_code == 200:
             data = resp.json()
-            print(f"CoinGecko returned {len(data)} coins")
+            print(f"Received {len(data)} coins")
             result = {item['id']: item for item in data}
             cache[cache_key] = result
             return result
         else:
-            print(f"CoinGecko returned status {resp.status_code}")
-            print(f"Response: {resp.text[:200]}")
+            print(f"CoinGecko failed: {resp.status_code} - {resp.text[:200]}")
     except Exception as e:
-        print(f"CoinGecko Error: {e}")
-        import traceback
+        print(f"CoinGecko error: {e}")
         traceback.print_exc()
-
     return {}
 
-def get_twitter_mentions(symbol):
-    if not TWITTER_BEARER:
-        return None
-    cache_key = f'twitter_{symbol}'
-    if cache_key in cache:
-        return cache[cache_key]
-    query = f'${symbol} -is:retweet lang:en'
-    url = f'https://api.twitter.com/2/tweets/search/recent?query={query}&max_results=10&tweet.fields=public_metrics'
-    headers = {'Authorization': f'Bearer {TWITTER_BEARER}'}
-    try:
-        resp = requests.get(url, headers=headers, timeout=10)
-        if resp.status_code == 200:
-            data = resp.json()
-            count = data.get('meta', {}).get('result_count', 0)
-            cache[cache_key] = count
-            return count
-    except Exception as e:
-        print(f"Twitter Error for {symbol}: {e}")
-    return None
-
-# ---------- FIXED: Returns 3 values correctly ----------
+# -------- UTILITY FUNCTIONS --------
 def calculate_risk_reward(sparkline, price, change_24h):
-    """Calculate Risk, Reward, and 7-day change."""
-    # Default return values (3 values)
     if not sparkline or len(sparkline) < 7:
-        return 50, 50, 0  # risk, reward, change_7d
-
-    # 7-day change
+        return 50, 50, 0
     change_7d = ((sparkline[-1] - sparkline[0]) / sparkline[0]) * 100 if sparkline[0] > 0 else 0
-
-    # Volatility
     returns = []
     for i in range(1, len(sparkline)):
         if sparkline[i-1] > 0:
             returns.append((sparkline[i] - sparkline[i-1]) / sparkline[i-1])
     volatility = statistics.stdev(returns) * 100 if len(returns) > 1 else 2.0
-
     risk_score = min(99, max(1, int(volatility * 15)))
     reward_raw = (change_24h * 0.6) + (change_7d * 0.4)
     reward_score = min(99, max(1, int(50 + reward_raw * 1.5)))
-
-    # THIS MUST RETURN 3 VALUES
     return risk_score, reward_score, change_7d
 
 # -------- ROUTES --------
@@ -137,12 +96,10 @@ def dashboard():
         mcap = cg.get('market_cap', 0)
         sparkline = cg.get('sparkline_in_7d', {}).get('price', [])
 
-        twitter_count = get_twitter_mentions(coin['symbol'])
-        mentions = twitter_count if twitter_count is not None else 0
+        # Twitter/LunarCrush would go here, but we skip for now
+        mentions = 0
 
-        # This call expects 3 values back
         risk_score, reward_score, change_7d = calculate_risk_reward(sparkline, price, change_24h)
-
         raw_hype = 50 + (change_24h * 0.5) + (change_7d * 0.3)
 
         raw_results.append({
@@ -163,12 +120,10 @@ def dashboard():
 
     final_results = []
     total = len(raw_results)
-
     for idx, coin in enumerate(raw_results):
         hype_score = max(35, 95 - (idx * 8))
         hype_score += (idx % 3) - 1
         hype_score = max(10, min(99, round(hype_score)))
-
         if idx < total * 0.3:
             signal = 'buy'
         elif idx > total * 0.7:
@@ -185,16 +140,7 @@ def dashboard():
 
     return jsonify(final_results)
 
-@app.route('/api/top_gainers')
-def top_gainers():
-    data = dashboard().get_json()
-    sorted_data = sorted(data, key=lambda x: x.get('change_24h', 0), reverse=True)
-    return jsonify(sorted_data[:3])
-
 if __name__ == '__main__':
     import os
     port = int(os.environ.get('PORT', 5000))
-    print("🚀 MemeRadar Pro v3.0 starting...")
-    print(f"📊 Loaded {len(COINS)} coins")
-    print(f"🔗 Access on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)

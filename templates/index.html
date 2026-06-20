@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MemeRadar Pro · Ultimate Dashboard</title>
+
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <!-- Google Font (Inter) -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap" rel="stylesheet">
+    <!-- Lightweight Charts (for sparklines) -->
+    <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.js"></script>
+
+    <style>
+        /* ----- GLOBAL RESET & THEMING ----- */
+        * { font-family: 'Inter', sans-serif; margin: 0; padding: 0; box-sizing: border-box; }
+        body { transition: background 0.4s ease, color 0.4s ease; }
+
+        /* Dark Theme (default) */
+        [data-theme="dark"] body {
+            background: #07080b;
+            color: #eaeef5;
+        }
+        [data-theme="dark"] .bg-card {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+        [data-theme="dark"] .bg-card-hover:hover {
+            border-color: #7c3aed;
+            background: rgba(255,255,255,0.06);
+        }
+        [data-theme="dark"] .text-muted { color: #9aa2b5; }
+        [data-theme="dark"] .tab-active {
+            background: rgba(124, 58, 237, 0.15);
+            color: #c084fc;
+            border-bottom: 2px solid #7c3aed;
+        }
+        [data-theme="dark"] .tab-inactive {
+            color: #6b7280;
+            border-bottom: 2px solid transparent;
+        }
+        [data-theme="dark"] .tab-inactive:hover {
+            color: #e5e7eb;
+            border-bottom: 2px solid #374151;
+        }
+        /* Light Theme */
+        [data-theme="light"] body {
+            background: #f3f4f6;
+            color: #111827;
+        }
+        [data-theme="light"] .bg-card {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+        }
+        [data-theme="light"] .bg-card-hover:hover {
+            border-color: #7c3aed;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.05);
+        }
+        [data-theme="light"] .text-muted { color: #6b7280; }
+        [data-theme="light"] .tab-active {
+            background: rgba(124, 58, 237, 0.08);
+            color: #6d28d9;
+            border-bottom: 2px solid #7c3aed;
+        }
+        [data-theme="light"] .tab-inactive {
+            color: #9ca3af;
+            border-bottom: 2px solid transparent;
+        }
+        [data-theme="light"] .tab-inactive:hover {
+            color: #374151;
+            border-bottom: 2px solid #d1d5db;
+        }
+
+        /* Shared UI */
+        .glass {
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        .signal-buy { background: #10b981; box-shadow: 0 0 20px rgba(16,185,129,0.25); }
+        .signal-hold { background: #f59e0b; box-shadow: 0 0 20px rgba(245,158,11,0.25); }
+        .signal-sell { background: #ef4444; box-shadow: 0 0 20px rgba(239,68,68,0.25); }
+        .hype-bar { background: linear-gradient(90deg, #7c3aed, #a855f7, #ec4899); }
+        .rotate-180 { transform: rotate(180deg); }
+        .dropdown-content { max-height: 0; overflow: hidden; transition: max-height 0.4s ease, opacity 0.3s ease; opacity: 0; }
+        .dropdown-open { max-height: 600px; opacity: 1; }
+        .btn-social {
+            transition: all 0.2s;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        [data-theme="light"] .btn-social {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+        }
+        .btn-social:hover {
+            transform: scale(1.05);
+            border-color: #7c3aed;
+        }
+        .rank-1 { color: #fbbf24; border-color: #fbbf24; }
+        .rank-2 { color: #94a3b8; border-color: #94a3b8; }
+        .rank-3 { color: #cd7f32; border-color: #cd7f32; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .chart-container { height: 60px; width: 100%; }
+        .live-dot { animation: pulse-dot 1.5s infinite; }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #7c3aed; border-radius: 10px; }
+        .filter-time { cursor: pointer; }
+    </style>
+</head>
+<body class="p-4 md:p-8 min-h-screen">
+
+    <div class="max-w-7xl mx-auto">
+
+        <!-- ========== HEADER ========== -->
+        <div class="flex flex-wrap justify-between items-center mb-6 gap-4">
+            <div>
+                <h1 class="text-3xl md:text-5xl font-extrabold tracking-tight flex items-center gap-3">
+                    <i class="fab fa-solana text-purple-500"></i>
+                    <span class="bg-gradient-to-r from-purple-400 via-pink-500 to-purple-400 bg-clip-text text-transparent">MemeRadar</span>
+                    <span class="text-2xl md:text-4xl text-white font-bold">Pro</span>
+                    <span class="text-xs font-medium bg-purple-500/20 px-3 py-1 rounded-full text-purple-300 border border-purple-500/30 ml-2">v3.0</span>
+                </h1>
+                <div class="flex items-center gap-3 mt-1">
+                    <span class="flex items-center gap-1 text-xs text-muted"><i class="fas fa-circle text-green-500 text-[6px] live-dot"></i> Live</span>
+                    <span class="text-xs text-muted">|</span>
+                    <span class="text-xs text-muted" id="timestamp">Loading...</span>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 flex-wrap">
+                <!-- Dark/Light Toggle -->
+                <button id="themeToggle" class="w-10 h-10 rounded-full bg-card border border-white/10 flex items-center justify-center text-muted hover:text-white transition">
+                    <i class="fas fa-moon" id="themeIcon"></i>
+                </button>
+                <!-- Refresh -->
+                <button onclick="fetchAllData()" id="refreshBtn" class="bg-purple-600 hover:bg-purple-500 px-5 py-2.5 rounded-xl flex items-center gap-2 font-semibold transition shadow-lg shadow-purple-600/20 text-sm">
+                    <i class="fas fa-sync-alt" id="spinIcon"></i> Refresh
+                </button>
+            </div>
+        </div>
+
+        <!-- ========== TOP STATS ========== -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6" id="statsRow">
+            <div class="bg-card rounded-2xl p-4 border border-white/5"><div class="text-muted text-xs uppercase">Coins</div><div class="text-2xl font-bold" id="statCoins">0</div></div>
+            <div class="bg-card rounded-2xl p-4 border border-white/5"><div class="text-muted text-xs uppercase">Buy Signals</div><div class="text-2xl font-bold text-emerald-400" id="statBuy">0</div></div>
+            <div class="bg-card rounded-2xl p-4 border border-white/5"><div class="text-muted text-xs uppercase">Avg. Hype</div><div class="text-2xl font-bold text-purple-400" id="statHype">0%</div></div>
+            <div class="bg-card rounded-2xl p-4 border border-white/5"><div class="text-muted text-xs uppercase">Total Mentions</div><div class="text-2xl font-bold text-blue-400" id="statMentions">0</div></div>
+        </div>
+
+        <!-- ========== QUICK HITS (Top 3) ========== -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="bg-card rounded-2xl p-4 border border-white/5">
+                <div class="text-muted text-xs uppercase flex items-center gap-1"><i class="fas fa-rocket text-purple-400"></i> Top Gainers</div>
+                <div id="topGainers" class="text-sm mt-1 text-white">Loading...</div>
+            </div>
+            <div class="bg-card rounded-2xl p-4 border border-white/5">
+                <div class="text-muted text-xs uppercase flex items-center gap-1"><i class="fas fa-comments text-blue-400"></i> Most Mentioned</div>
+                <div id="mostMentioned" class="text-sm mt-1 text-white">Loading...</div>
+            </div>
+            <div class="bg-card rounded-2xl p-4 border border-white/5">
+                <div class="text-muted text-xs uppercase flex items-center gap-1"><i class="fas fa-fire text-orange-400"></i> Hype Leaders</div>
+                <div id="hypeLeaders" class="text-sm mt-1 text-white">Loading...</div>
+            </div>
+        </div>
+
+        <!-- ========== TABS ========== -->
+        <div class="flex flex-wrap gap-1 border-b border-white/10 mb-6" id="tabHeaders">
+            <button class="tab-active px-5 py-2.5 text-sm font-medium transition" data-tab="market"><i class="fas fa-chart-simple mr-2"></i>Market</button>
+            <button class="tab-inactive px-5 py-2.5 text-sm font-medium transition" data-tab="scanner"><i class="fas fa-search mr-2"></i>Scanner</button>
+            <button class="tab-inactive px-5 py-2.5 text-sm font-medium transition" data-tab="sentiment"><i class="fas fa-wave-square mr-2"></i>Sentiment</button>
+            <button class="tab-inactive px-5 py-2.5 text-sm font-medium transition" data-tab="portfolio"><i class="fas fa-wallet mr-2"></i>Portfolio</button>
+        </div>
+
+        <!-- ========== TAB CONTENT: MARKET ========== -->
+        <div class="tab-content active" id="tab-market">
+            <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5" id="coinGrid">
+                <!-- JS injects cards -->
+            </div>
+        </div>
+
+        <!-- ========== TAB CONTENT: SCANNER ========== -->
+        <div class="tab-content" id="tab-scanner">
+            <div class="bg-card rounded-3xl p-6 border border-white/5">
+                <h3 class="text-xl font-bold mb-4"><i class="fas fa-microscope text-purple-400 mr-2"></i>Live Scanner</h3>
+                <p class="text-muted text-sm mb-4">Coins with the highest potential based on hype + momentum.</p>
+                
+                <!-- FILTERS -->
+                <div class="flex flex-wrap gap-3 mb-5">
+                    <div class="flex items-center gap-2 bg-black/20 rounded-xl px-3 py-1.5 border border-white/5">
+                        <span class="text-xs text-muted">Time:</span>
+                        <button onclick="applyTimeFilter('24h')" class="filter-time text-xs px-2 py-1 rounded bg-purple-500/20 text-purple-300" data-period="24h">Today</button>
+                        <button onclick="applyTimeFilter('7d')" class="filter-time text-xs px-2 py-1 rounded hover:bg-purple-500/20 hover:text-purple-300 transition" data-period="7d">Week</button>
+                        <button onclick="applyTimeFilter('30d')" class="filter-time text-xs px-2 py-1 rounded hover:bg-purple-500/20 hover:text-purple-300 transition" data-period="30d">Month</button>
+                        <button onclick="applyTimeFilter('365d')" class="filter-time text-xs px-2 py-1 rounded hover:bg-purple-500/20 hover:text-purple-300 transition" data-period="365d">Year</button>
+                    </div>
+                    <div class="flex items-center gap-2 bg-black/20 rounded-xl px-3 py-1.5 border border-white/5">
+                        <span class="text-xs text-muted">Risk/Reward:</span>
+                        <select id="riskFilter" onchange="applyRiskFilter(this.value)" class="bg-transparent text-xs text-white border-none outline-none">
+                            <option value="all">All</option>
+                            <option value="high_high">🔥 High Risk / High Reward</option>
+                            <option value="low_high">🛡️ Low Risk / High Reward</option>
+                            <option value="high_low">⚠️ High Risk / Low Reward</option>
+                            <option value="low_low">😴 Low Risk / Low Reward</option>
+                        </select>
+                    </div>
+                    <button onclick="resetFilters()" class="text-xs text-muted hover:text-white transition underline">Reset</button>
+                </div>
+
+                <div id="scannerResults" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- JS injects scanner cards -->
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== TAB CONTENT: SENTIMENT ========== -->
+        <div class="tab-content" id="tab-sentiment">
+            <div class="bg-card rounded-3xl p-6 border border-white/5">
+                <h3 class="text-xl font-bold mb-4"><i class="fas fa-wave-square text-blue-400 mr-2"></i>Social Sentiment</h3>
+                <p class="text-muted text-sm mb-4">Aggregated sentiment from Twitter, Reddit, and LunarCrush.</p>
+                <div id="sentimentResults" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <!-- JS injects sentiment cards -->
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== TAB CONTENT: PORTFOLIO ========== -->
+        <div class="tab-content" id="tab-portfolio">
+            <div class="bg-card rounded-3xl p-6 border border-white/5">
+                <h3 class="text-xl font-bold mb-4"><i class="fas fa-wallet text-emerald-400 mr-2"></i>Watchlist / Portfolio</h3>
+                <p class="text-muted text-sm mb-4">Add coins to your watchlist by clicking the ⭐ on any card.</p>
+                <div id="portfolioResults" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div class="text-muted text-sm col-span-full text-center py-10">No coins in watchlist yet. Go to Market and click ⭐ on a coin.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== FOOTER ========== -->
+        <div class="mt-8 text-center text-muted text-xs border-t border-white/5 pt-6 flex justify-between flex-wrap">
+            <span><i class="fas fa-database mr-1"></i> Data: CoinGecko · LunarCrush · Twitter</span>
+            <span><i class="fas fa-shield-alt mr-1"></i> MemeRadar Pro v3.0</span>
+        </div>
+    </div>
+
+    <script>
+        // ===================== GLOBAL STATE =====================
+        let allCoins = [];
+        let watchlist = JSON.parse(localStorage.getItem('watchlist')) || [];
+        let currentTimeFilter = '24h';
+        let currentRiskFilter = 'all';
+
+        // ===================== THEME TOGGLE =====================
+        const themeToggle = document.getElementById('themeToggle');
+        const themeIcon = document.getElementById('themeIcon');
+        const root = document.documentElement;
+
+        function setTheme(theme) {
+            root.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+            themeIcon.className = theme === 'dark' ? 'fas fa-moon' : 'fas fa-sun';
+        }
+
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        setTheme(savedTheme);
+
+        themeToggle.addEventListener('click', () => {
+            const current = root.getAttribute('data-theme');
+            setTheme(current === 'dark' ? 'light' : 'dark');
+        });
+
+        // ===================== TABS =====================
+        document.querySelectorAll('[data-tab]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('[data-tab]').forEach(b => {
+                    b.className = 'tab-inactive px-5 py-2.5 text-sm font-medium transition';
+                });
+                btn.className = 'tab-active px-5 py-2.5 text-sm font-medium transition';
+                const tabId = btn.getAttribute('data-tab');
+                document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+                document.getElementById(`tab-${tabId}`).classList.add('active');
+            });
+        });
+
+        // ===================== FETCH DATA =====================
+        async function fetchAllData() {
+            const icon = document.getElementById('spinIcon');
+            icon.classList.add('fa-spin');
+            document.getElementById('refreshBtn').disabled = true;
+
+            try {
+                const res = await fetch('/api/dashboard');
+                allCoins = await res.json();
+                renderDashboard(allCoins);
+                renderQuickHits(allCoins);
+                renderSentiment(allCoins);
+                renderPortfolio();
+                // Apply filters to scanner
+                applyAllFilters();
+                document.getElementById('timestamp').innerText = new Date().toLocaleTimeString();
+            } catch(e) {
+                console.error(e);
+                alert('Error fetching data. Is Flask running?');
+            } finally {
+                icon.classList.remove('fa-spin');
+                document.getElementById('refreshBtn').disabled = false;
+            }
+        }
+
+        // ===================== RENDER MAIN DASHBOARD =====================
+        function renderDashboard(coins) {
+            const grid = document.getElementById('coinGrid');
+            let html = '';
+            let buyCount = 0, totalHype = 0, totalMentions = 0;
+
+            coins.forEach((coin, i) => {
+                const signalClass = coin.signal === 'buy' ? 'signal-buy' : (coin.signal === 'sell' ? 'signal-sell' : 'signal-hold');
+                const signalIcon = coin.signal === 'buy' ? 'fa-circle-check' : (coin.signal === 'sell' ? 'fa-circle-xmark' : 'fa-circle-pause');
+                const changeColor = coin.change_24h >= 0 ? 'text-emerald-400' : 'text-red-400';
+                const changeIcon = coin.change_24h >= 0 ? 'fa-arrow-up' : 'fa-arrow-down';
+                const signalLabel = coin.signal ? coin.signal.toUpperCase() : 'HOLD';
+
+                let rankHtml = `<span class="text-xs font-mono text-muted">#${coin.rank}</span>`;
+                if (coin.rank === 1) rankHtml = `<span class="text-lg rank-1"><i class="fas fa-crown"></i></span>`;
+                else if (coin.rank === 2) rankHtml = `<span class="text-lg rank-2"><i class="fas fa-crown"></i></span>`;
+                else if (coin.rank === 3) rankHtml = `<span class="text-lg rank-3"><i class="fas fa-crown"></i></span>`;
+
+                const isWatched = watchlist.includes(coin.id);
+                const starIcon = isWatched ? 'fas fa-star text-yellow-400' : 'far fa-star text-muted';
+
+                if (coin.signal === 'buy') buyCount++;
+                totalHype += coin.hype;
+                totalMentions += coin.mentions || 0;
+
+                const chartId = `chart-${i}`;
+
+                html += `
+                    <div class="bg-card rounded-3xl p-5 border border-white/5 hover:border-purple-500/30 transition card-hover" data-coin-id="${coin.id}">
+                        <div class="flex items-start justify-between">
+                            <div class="flex items-center gap-2">
+                                ${rankHtml}
+                                <img src="${coin.logo}" class="w-11 h-11 rounded-xl border border-white/10 object-cover bg-zinc-800" 
+                                     onerror="this.src='https://ui-avatars.com/api/?name=${coin.symbol}&size=40&background=7c3aed&color=fff'">
+                                <div>
+                                    <h4 class="font-bold flex items-center gap-2">${coin.name} <span class="text-xs text-muted font-mono bg-black/30 px-2 py-0.5 rounded">${coin.symbol}</span></h4>
+                                    <span class="text-xs text-purple-400">${coin.chain}</span>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-lg font-mono font-bold">$${coin.price ? coin.price.toFixed(4) : '0.00'}</div>
+                                <div class="text-xs ${changeColor}"><i class="fas ${changeIcon}"></i> ${coin.change_24h > 0 ? '+' : ''}${coin.change_24h}%</div>
+                            </div>
+                        </div>
+
+                        <div class="chart-container mt-2" id="${chartId}"></div>
+
+                        <div class="grid grid-cols-3 gap-2 mt-2">
+                            <div class="bg-black/30 rounded-xl p-2 text-center">
+                                <div class="text-[10px] text-muted uppercase">Hype</div>
+                                <div class="text-lg font-bold text-purple-400">${coin.hype}</div>
+                                <div class="w-full bg-zinc-800 h-1 rounded-full mt-1 overflow-hidden"><div class="hype-bar h-full rounded-full" style="width:${coin.hype}%"></div></div>
+                            </div>
+                            <div class="bg-black/30 rounded-xl p-2 text-center">
+                                <div class="text-[10px] text-muted uppercase">Signal</div>
+                                <div class="flex justify-center mt-1"><span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${signalClass} text-white flex items-center gap-1"><i class="fas ${signalIcon}"></i> ${signalLabel}</span></div>
+                            </div>
+                            <div class="bg-black/30 rounded-xl p-2 text-center">
+                                <div class="text-[10px] text-muted uppercase">Mentions</div>
+                                <div class="text-lg font-bold text-blue-400">${coin.mentions || 0}</div>
+                            </div>
+                        </div>
+
+                        <div class="flex gap-2 mt-3">
+                            <button onclick="toggleWatchlist('${coin.id}')" class="text-sm px-3 py-1.5 rounded-lg bg-black/20 border border-white/5 hover:border-purple-500 transition flex items-center gap-1">
+                                <i class="${starIcon}" id="star-${coin.id}"></i> Watch
+                            </button>
+                            <button onclick="toggleDropdown(${i})" class="text-sm px-3 py-1.5 rounded-lg bg-black/20 border border-white/5 hover:border-purple-500 transition flex items-center gap-1 flex-1 justify-center">
+                                <i class="fas fa-chevron-down rotate-icon" id="arrow-${i}"></i> Details
+                            </button>
+                        </div>
+
+                        <div class="dropdown-content mt-2" id="dropdown-${i}">
+                            <div class="p-3 bg-black/30 rounded-xl border border-white/5 text-xs space-y-2">
+                                <p><span class="text-purple-400 font-semibold">📖 Story:</span> ${coin.story}</p>
+                                <p><span class="text-yellow-400 font-semibold">🔥 Why popular:</span> ${coin.why_popular}</p>
+                                <div class="flex flex-wrap gap-1.5 pt-1">
+                                    <a href="${coin.social.twitter}" target="_blank" class="btn-social px-3 py-1.5 rounded-lg text-xs flex items-center gap-1"><i class="fab fa-twitter text-blue-400"></i> Twitter</a>
+                                    <a href="${coin.social.telegram}" target="_blank" class="btn-social px-3 py-1.5 rounded-lg text-xs flex items-center gap-1"><i class="fab fa-telegram text-blue-400"></i> Telegram</a>
+                                    <a href="${coin.social.website}" target="_blank" class="btn-social px-3 py-1.5 rounded-lg text-xs flex items-center gap-1"><i class="fas fa-globe text-purple-400"></i> Website</a>
+                                    <a href="https://dexscreener.com/search?q=${coin.symbol}" target="_blank" class="btn-social px-3 py-1.5 rounded-lg text-xs flex items-center gap-1"><i class="fas fa-chart-line text-emerald-400"></i> DexScreener</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            grid.innerHTML = html;
+
+            document.getElementById('statCoins').innerText = coins.length;
+            document.getElementById('statBuy').innerText = buyCount;
+            document.getElementById('statHype').innerHTML = (coins.length ? Math.round(totalHype/coins.length) : 0) + '<span class="text-sm text-muted font-normal">%</span>';
+            document.getElementById('statMentions').innerText = totalMentions.toLocaleString();
+
+            setTimeout(() => {
+                coins.forEach((coin, i) => {
+                    const container = document.getElementById(`chart-${i}`);
+                    if (!container) return;
+                    const chart = LightweightCharts.createChart(container, {
+                        width: container.clientWidth || 300,
+                        height: 60,
+                        layout: { background: { color: 'transparent' }, textColor: 'rgba(255,255,255,0.2)' },
+                        grid: { vertLines: { color: 'transparent' }, horzLines: { color: 'transparent' } },
+                        crosshair: { mode: 0 },
+                        rightPriceScale: { visible: false },
+                        timeScale: { visible: false },
+                    });
+                    const line = chart.addLineSeries({ color: '#7c3aed', lineWidth: 2 });
+                    const spark = coin.sparkline || [];
+                    if (spark.length > 1) {
+                        const data = spark.map((val, idx) => ({ time: idx, value: val }));
+                        line.setData(data);
+                    } else {
+                        const fake = [1, 1.02, 0.98, 1.01, 1.03, 1.05, 1.02];
+                        const data = fake.map((val, idx) => ({ time: idx, value: val * (coin.price || 0.01) }));
+                        line.setData(data);
+                    }
+                    chart.timeScale().fitContent();
+                });
+            }, 100);
+        }
+
+        // ===================== QUICK HITS =====================
+        function renderQuickHits(coins) {
+            const sortedByChange = [...coins].sort((a,b) => b.change_24h - a.change_24h).slice(0,3);
+            document.getElementById('topGainers').innerHTML = sortedByChange.map(c => 
+                `<span class="inline-block bg-zinc-800/50 px-2 py-0.5 rounded mr-1 text-xs">${c.symbol} <span class="text-emerald-400">+${c.change_24h}%</span></span>`
+            ).join('') || '—';
+
+            const sortedByMentions = [...coins].sort((a,b) => (b.mentions||0) - (a.mentions||0)).slice(0,3);
+            document.getElementById('mostMentioned').innerHTML = sortedByMentions.map(c => 
+                `<span class="inline-block bg-zinc-800/50 px-2 py-0.5 rounded mr-1 text-xs">${c.symbol} <span class="text-blue-400">${c.mentions||0}</span></span>`
+            ).join('') || '—';
+
+            const sortedByHype = [...coins].sort((a,b) => b.hype - a.hype).slice(0,3);
+            document.getElementById('hypeLeaders').innerHTML = sortedByHype.map(c => 
+                `<span class="inline-block bg-zinc-800/50 px-2 py-0.5 rounded mr-1 text-xs">${c.symbol} <span class="text-purple-400">${c.hype}</span></span>`
+            ).join('') || '—';
+        }
+
+        // ===================== SENTIMENT =====================
+        function renderSentiment(coins) {
+            const container = document.getElementById('sentimentResults');
+            container.innerHTML = coins.map(c => {
+                const sentiment = c.sentiment || 'neutral';
+                const sentimentIcon = sentiment === 'bullish' ? 'fa-face-smile text-emerald-400' : 
+                                     (sentiment === 'bearish' ? 'fa-face-frown text-red-400' : 'fa-face-meh text-yellow-400');
+                return `
+                    <div class="bg-black/20 rounded-xl p-4 border border-white/5">
+                        <div class="flex items-center gap-3">
+                            <img src="${c.logo}" class="w-8 h-8 rounded-full object-cover" onerror="this.src='https://ui-avatars.com/api/?name=${c.symbol}&size=30&background=7c3aed&color=fff'">
+                            <div>
+                                <div class="font-bold text-sm">${c.name}</div>
+                                <div class="text-xs text-muted">${c.mentions || 0} mentions</div>
+                            </div>
+                            <div class="ml-auto text-right">
+                                <i class="fas ${sentimentIcon} text-lg"></i>
+                                <div class="text-xs capitalize text-muted">${sentiment}</div>
+                            </div>
+                        </div>
+                        <div class="mt-2 w-full bg-zinc-800 h-1 rounded-full overflow-hidden">
+                            <div class="hype-bar h-full rounded-full" style="width:${Math.min(100, (c.social_score || 0) * 5)}%"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // ===================== PORTFOLIO / WATCHLIST =====================
+        function toggleWatchlist(coinId) {
+            const idx = watchlist.indexOf(coinId);
+            if (idx > -1) {
+                watchlist.splice(idx, 1);
+            } else {
+                watchlist.push(coinId);
+            }
+            localStorage.setItem('watchlist', JSON.stringify(watchlist));
+            const star = document.getElementById(`star-${coinId}`);
+            if (star) {
+                star.className = watchlist.includes(coinId) ? 'fas fa-star text-yellow-400' : 'far fa-star text-muted';
+            }
+            renderPortfolio();
+        }
+
+        function renderPortfolio() {
+            const container = document.getElementById('portfolioResults');
+            if (watchlist.length === 0) {
+                container.innerHTML = `<div class="text-muted text-sm col-span-full text-center py-10">No coins in watchlist yet. Go to Market and click ⭐ on a coin.</div>`;
+                return;
+            }
+            const watchedCoins = allCoins.filter(c => watchlist.includes(c.id));
+            if (watchedCoins.length === 0) {
+                container.innerHTML = `<div class="text-muted text-sm col-span-full text-center py-10">No coins in watchlist yet. Go to Market and click ⭐ on a coin.</div>`;
+                return;
+            }
+            container.innerHTML = watchedCoins.map(c => `
+                <div class="bg-black/20 rounded-xl p-4 border border-white/5 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <img src="${c.logo}" class="w-8 h-8 rounded-full object-cover" onerror="this.src='https://ui-avatars.com/api/?name=${c.symbol}&size=30&background=7c3aed&color=fff'">
+                        <div>
+                            <div class="font-bold text-sm">${c.name} <span class="text-muted font-mono text-xs">${c.symbol}</span></div>
+                            <div class="text-xs text-muted">$${c.price ? c.price.toFixed(4) : '0.00'} · ${c.change_24h > 0 ? '+' : ''}${c.change_24h}%</div>
+                        </div>
+                    </div>
+                    <button onclick="toggleWatchlist('${c.id}')" class="text-sm px-3 py-1 rounded-lg bg-red-500/20 border border-red-500/30 hover:bg-red-500/30 transition">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        // ===================== SCANNER (with Filters) =====================
+        function renderScanner(coins) {
+            const container = document.getElementById('scannerResults');
+            if (!coins) coins = allCoins;
+            const sorted = [...coins].slice(0, 8);
+            if (sorted.length === 0) {
+                container.innerHTML = `<div class="text-muted text-sm col-span-full text-center py-10">No coins match your filters.</div>`;
+                return;
+            }
+            container.innerHTML = sorted.map(c => `
+                <div class="bg-black/20 rounded-xl p-4 border border-white/5 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <span class="text-xs text-muted font-mono">#${c.rank || '--'}</span>
+                        <img src="${c.logo}" class="w-8 h-8 rounded-full object-cover" onerror="this.src='https://ui-avatars.com/api/?name=${c.symbol}&size=30&background=7c3aed&color=fff'">
+                        <div>
+                            <div class="font-bold text-sm">${c.name} <span class="text-muted font-mono text-xs">${c.symbol}</span></div>
+                            <div class="text-xs text-muted">24h: ${c.change_24h > 0 ? '+' : ''}${c.change_24h}% · 7d: ${c.change_7d > 0 ? '+' : ''}${c.change_7d}%</div>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-xs font-bold ${c.signal === 'buy' ? 'text-emerald-400' : (c.signal === 'sell' ? 'text-red-400' : 'text-yellow-400')}">${c.signal ? c.signal.toUpperCase() : 'HOLD'}</span>
+                        <div class="text-xs text-muted">Hype ${c.hype}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ===================== FILTERS =====================
+        function applyTimeFilter(period) {
+            currentTimeFilter = period;
+            document.querySelectorAll('.filter-time').forEach(btn => {
+                btn.className = 'filter-time text-xs px-2 py-1 rounded hover:bg-purple-500/20 hover:text-purple-300 transition';
+                if (btn.dataset.period === period) {
+                    btn.className = 'filter-time text-xs px-2 py-1 rounded bg-purple-500/20 text-purple-300';
+                }
+            });
+            applyAllFilters();
+        }
+
+        function applyRiskFilter(value) {
+            currentRiskFilter = value;
+            applyAllFilters();
+        }
+
+        function applyAllFilters() {
+            if (!allCoins || allCoins.length === 0) return;
+            
+            let filtered = [...allCoins];
+
+            if (currentTimeFilter === '24h') {
+                filtered.sort((a, b) => b.change_24h - a.change_24h);
+            } else if (currentTimeFilter === '7d') {
+                filtered.sort((a, b) => (b.change_7d || 0) - (a.change_7d || 0));
+            } else if (currentTimeFilter === '30d') {
+                filtered.sort((a, b) => ((b.change_7d || 0) * 1.5) - ((a.change_7d || 0) * 1.5));
+            } else if (currentTimeFilter === '365d') {
+                filtered.sort((a, b) => ((b.change_7d || 0) * 2.5) - ((a.change_7d || 0) * 2.5));
+            }
+
+            if (currentRiskFilter !== 'all') {
+                filtered = filtered.filter(coin => {
+                    const risk = coin.risk || 50;
+                    const reward = coin.reward || 50;
+                    const isHighRisk = risk > 60;
+                    const isHighReward = reward > 60;
+                    
+                    if (currentRiskFilter === 'high_high') return isHighRisk && isHighReward;
+                    if (currentRiskFilter === 'low_high') return !isHighRisk && isHighReward;
+                    if (currentRiskFilter === 'high_low') return isHighRisk && !isHighReward;
+                    if (currentRiskFilter === 'low_low') return !isHighRisk && !isHighReward;
+                    return true;
+                });
+            }
+
+            renderScanner(filtered);
+        }
+
+        function resetFilters() {
+            currentTimeFilter = '24h';
+            currentRiskFilter = 'all';
+            document.getElementById('riskFilter').value = 'all';
+            document.querySelectorAll('.filter-time').forEach(btn => {
+                btn.className = 'filter-time text-xs px-2 py-1 rounded hover:bg-purple-500/20 hover:text-purple-300 transition';
+                if (btn.dataset.period === '24h') {
+                    btn.className = 'filter-time text-xs px-2 py-1 rounded bg-purple-500/20 text-purple-300';
+                }
+            });
+            applyAllFilters();
+        }
+
+        // ===================== DROPDOWN TOGGLE =====================
+        function toggleDropdown(index) {
+            const content = document.getElementById(`dropdown-${index}`);
+            const arrow = document.getElementById(`arrow-${index}`);
+            if (!content) return;
+            content.classList.toggle('dropdown-open');
+            if (arrow) arrow.classList.toggle('rotate-180');
+        }
+
+        // ===================== INITIAL LOAD =====================
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchAllData();
+            setInterval(fetchAllData, 60000);
+        });
+    </script>
+</body>
+</html>

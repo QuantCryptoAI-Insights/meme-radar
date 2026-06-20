@@ -1,6 +1,7 @@
 import os
 import requests
 import statistics
+import traceback
 from flask import Flask, render_template, jsonify
 from dotenv import load_dotenv
 from cachetools import TTLCache
@@ -47,15 +48,31 @@ def get_coingecko_data():
         return cache[cache_key]
 
     ids = ','.join([c['id'] for c in COINS])
-    url = f'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids={ids}&order=market_cap_desc&per_page=100&page=1&sparkline=true'
+    url = f'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids={ids}&order=market_cap_desc&per_page=250&page=1&sparkline=true'
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+
     try:
-        resp = requests.get(url, timeout=10)
+        print(f"Fetching CoinGecko data for {len(COINS)} coins...")
+        resp = requests.get(url, timeout=15, headers=headers)
+        print(f"CoinGecko response status: {resp.status_code}")
+
         if resp.status_code == 200:
-            data = {item['id']: item for item in resp.json()}
-            cache[cache_key] = data
-            return data
+            data = resp.json()
+            print(f"CoinGecko returned {len(data)} coins")
+            result = {item['id']: item for item in data}
+            cache[cache_key] = result
+            return result
+        else:
+            print(f"CoinGecko returned status {resp.status_code}")
+            print(f"Response: {resp.text[:200]}")
     except Exception as e:
         print(f"CoinGecko Error: {e}")
+        import traceback
+        traceback.print_exc()
+
     return {}
 
 def get_twitter_mentions(symbol):

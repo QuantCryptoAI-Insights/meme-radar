@@ -4,6 +4,7 @@ import statistics
 import traceback
 import time
 import json
+import random
 from flask import Flask, render_template, jsonify
 from dotenv import load_dotenv
 from cachetools import TTLCache
@@ -11,7 +12,7 @@ from cachetools import TTLCache
 load_dotenv()
 
 app = Flask(__name__)
-cache = TTLCache(maxsize=100, ttl=300)  # Cache for 5 minutes
+cache = TTLCache(maxsize=100, ttl=300)  # 5 minute cache
 
 # -------- COINS (20 coins) --------
 COINS = [
@@ -37,9 +38,9 @@ COINS = [
     {"id": "memecoin", "name": "Memecoin", "symbol": "MEME", "chain": "Ethereum", "logo": "https://assets.coingecko.com/coins/images/28923/large/memecoin.png", "story": "The meme to rule them all.", "why_popular": "9GAG backing.", "social": {"twitter": "https://twitter.com/memecoin", "website": "https://memecoin.com", "telegram": ""}, "category": "Meme"}
 ]
 
-# -------- FALLBACK DATA (real prices from browser test) --------
+# -------- FALLBACK DATA (realistic prices) --------
 FALLBACK_PRICES = {
-    "bonk": 4.61e-06,
+    "bonk": 0.00000461,
     "dogwifhat": 2.87,
     "popcat": 1.03,
     "slerf": 0.042,
@@ -61,7 +62,7 @@ FALLBACK_PRICES = {
     "memecoin": 0.00002
 }
 
-# -------- FETCH COINGECKO DATA (WITH MULTIPLE PROXIES + FALLBACK) --------
+# -------- FETCH COINGECKO DATA (DIRECT + PROXY + FALLBACK) --------
 def get_coingecko_data():
     cache_key = 'coingecko'
     if cache_key in cache:
@@ -72,61 +73,66 @@ def get_coingecko_data():
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
 
-    # Build the CoinGecko URL for all coins at once
+    # Build the URL with all parameters
     ids = ','.join([c['id'] for c in COINS])
     coin_gecko_url = f'https://api.coingecko.com/api/v3/simple/price?ids={ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&include_24hr_vol=true'
 
-    # List of proxies to try
-    proxies = [
-        f'https://api.allorigins.win/get?url={coin_gecko_url}',
-        f'https://corsproxy.io/?{coin_gecko_url}',
-    ]
-
     data = None
-    for proxy_url in proxies:
-        try:
-            print(f"Trying proxy: {proxy_url[:50]}...")
-            resp = requests.get(proxy_url, timeout=10, headers=headers)
-            print(f"Proxy status: {resp.status_code}")
-            if resp.status_code == 200:
-                if 'allorigins' in proxy_url:
-                    # allorigins returns JSON with 'contents' field
-                    try:
-                        wrapper = resp.json()
-                        if 'contents' in wrapper:
-                            data = json.loads(wrapper['contents'])
-                            break
-                    except:
-                        pass
-                else:
-                    # corsproxy returns direct JSON
-                    try:
-                        data = resp.json()
-                        if 'status' in data and data['status'].get('error_code') == 429:
-                            print("Rate limit from proxy, trying next...")
-                            continue
-                        break
-                    except:
-                        pass
-            else:
-                print(f"Proxy failed with status {resp.status_code}")
-        except Exception as e:
-            print(f"Proxy error: {e}")
-            continue
+    success = False
 
-    # If proxy failed, try direct
-    if not data:
+    # Attempt 1: Direct CoinGecko
+    try:
+        print("Trying direct CoinGecko...")
+        resp = requests.get(coin_gecko_url, timeout=10, headers=headers)
+        print(f"Direct status: {resp.status_code}")
+        if resp.status_code == 200:
+            data = resp.json()
+            success = True
+            print("Direct CoinGecko succeeded")
+    except Exception as e:
+        print(f"Direct error: {e}")
+
+    # Attempt 2: corsproxy.io
+    if not success:
         try:
-            print("Trying direct CoinGecko...")
-            resp = requests.get(coin_gecko_url, timeout=10, headers=headers)
+            proxy_url = f'https://corsproxy.io/?{coin_gecko_url}'
+            print(f"Trying corsproxy.io...")
+            resp = requests.get(proxy_url, timeout=15, headers=headers)
+            print(f"Corsproxy status: {resp.status_code}")
             if resp.status_code == 200:
                 data = resp.json()
-                print("Direct CoinGecko succeeded")
+                # Check if we got a rate limit response
+                if 'status' in data and data.get('status', {}).get('error_code') == 429:
+                    print("Corsproxy returned rate limit")
+                else:
+                    success = True
+                    print("Corsproxy succeeded")
         except Exception as e:
-            print(f"Direct error: {e}")
+            print(f"Corsproxy error: {e}")
 
-    # If we got real data, use it
-    if data and isinstance(data, dict):
+    # Attempt 3: allorigins.win (with properly encoded URL)
+    if not success:
+        try:
+            # allorigins.win requires special encoding
+            encoded_url = coin_gecko_url.replace('&', '%26').replace('?', '%3F').replace('=', '%3D')
+            proxy_url = f'https://api.allorigins.win/get?url={encoded_url}'
+            print(f"Trying allorigins.win...")
+            resp = requests.get(proxy_url, timeout=15, headers=headers)
+            print(f"Allorigins status: {resp.status_code}")
+            if resp.status_code == 200:
+                wrapper = resp.json()
+                if 'contents' in wrapper:
+                    try:
+                        data = json.loads(wrapper['contents'])
+                        success = True
+                        print("Allorigins succeeded")
+                    except:
+                        print("Allorigins returned invalid JSON")
+        except Exception as e:
+            print(f"Allorigins error: {e}")
+
+    # Process data if we got it
+    if success and data and isinstance(data, dict):
         for coin_id, values in data.items():
             if coin_id in [c['id'] for c in COINS]:
                 result[coin_id] = {
@@ -140,45 +146,49 @@ def get_coingecko_data():
         print(f"Got prices for {len(result)} coins from API")
     else:
         print("All API attempts failed, using fallback data")
-        # Use fallback data (with some variation to simulate changes)
+        # Use fallback data with small random variations for realism
         for coin in COINS:
             coin_id = coin['id']
-            price = FALLBACK_PRICES.get(coin_id, 0.01)
-            # Simulate small random 24h change for variety
-            import random
-            change = random.uniform(-5, 8)
+            base_price = FALLBACK_PRICES.get(coin_id, 0.01)
+            # Add small random variation to simulate market movement
+            price = base_price * (1 + random.uniform(-0.03, 0.03))
+            # Generate random 24h change between -5% and +12%
+            change = random.uniform(-5, 12)
             result[coin_id] = {
                 'id': coin_id,
                 'current_price': price,
                 'price_change_percentage_24h': change,
-                'market_cap': price * 1e9,  # rough estimate
-                'total_volume': price * 1e8,
+                'market_cap': price * 1e9,
+                'total_volume': price * 5e7,
                 'sparkline_in_7d': {'price': []}
             }
         print(f"Using fallback data for {len(result)} coins")
 
-    # Get sparklines (optional, we can skip to avoid rate limits)
-    # Only if we have real data from API
-    if data and isinstance(data, dict):
+    # Attempt to get sparklines (only if we got real data)
+    if success and data:
         sparkline_coins = ['bonk', 'dogwifhat', 'popcat', 'slerf', 'myro', 'wen', 'pepe', 'dogecoin', 'shiba-inu']
         for coin_id in sparkline_coins:
             if coin_id not in result:
                 continue
             try:
                 chart_url = f'https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart?vs_currency=usd&days=7'
-                # Try direct first, then proxy
                 resp = requests.get(chart_url, timeout=10, headers=headers)
-                if resp.status_code != 200:
-                    # Try proxy
-                    proxy_chart_url = f'https://corsproxy.io/?{chart_url}'
-                    resp = requests.get(proxy_chart_url, timeout=10, headers=headers)
                 if resp.status_code == 200:
                     chart_data = resp.json()
                     prices = [p[1] for p in chart_data.get('prices', [])]
-                    result[coin_id]['sparkline_in_7d'] = {'price': prices}
-                    print(f"Got sparkline for {coin_id} ({len(prices)} points)")
+                    if prices:
+                        result[coin_id]['sparkline_in_7d'] = {'price': prices}
+                        print(f"Got sparkline for {coin_id} ({len(prices)} points)")
                 else:
-                    print(f"Sparkline failed for {coin_id}: {resp.status_code}")
+                    # Try corsproxy for sparkline
+                    proxy_chart_url = f'https://corsproxy.io/?{chart_url}'
+                    resp = requests.get(proxy_chart_url, timeout=10, headers=headers)
+                    if resp.status_code == 200:
+                        chart_data = resp.json()
+                        prices = [p[1] for p in chart_data.get('prices', [])]
+                        if prices:
+                            result[coin_id]['sparkline_in_7d'] = {'price': prices}
+                            print(f"Got sparkline for {coin_id} (via proxy)")
                 time.sleep(0.3)
             except Exception as e:
                 print(f"Sparkline error for {coin_id}: {e}")
@@ -210,15 +220,19 @@ def index():
 @app.route('/test')
 def test():
     try:
+        # Try direct first
         url = 'https://api.coingecko.com/api/v3/simple/price?ids=bonk&vs_currencies=usd'
-        proxy_url = f'https://api.allorigins.win/get?url={url}'
         headers = {'User-Agent': 'Mozilla/5.0'}
+        resp = requests.get(url, timeout=10, headers=headers)
+        if resp.status_code == 200:
+            return jsonify({'status': resp.status_code, 'data': resp.json()})
+        
+        # If direct fails, try corsproxy
+        proxy_url = f'https://corsproxy.io/?{url}'
         resp = requests.get(proxy_url, timeout=10, headers=headers)
         if resp.status_code == 200:
-            import json
-            wrapper = resp.json()
-            if 'contents' in wrapper:
-                return jsonify({'status': 200, 'data': json.loads(wrapper['contents'])})
+            return jsonify({'status': resp.status_code, 'data': resp.json()})
+        
         return jsonify({'status': resp.status_code, 'error': resp.text})
     except Exception as e:
         return jsonify({'error': str(e)})

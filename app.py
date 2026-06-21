@@ -1,6 +1,5 @@
 import os
 import random
-import time
 from flask import Flask, render_template, jsonify
 
 app = Flask(__name__)
@@ -29,49 +28,58 @@ COINS = [
     {"id": "memecoin", "name": "Memecoin", "symbol": "MEME", "chain": "Ethereum", "logo": "https://assets.coingecko.com/coins/images/28923/large/memecoin.png", "story": "The meme to rule them all.", "why_popular": "9GAG backing.", "social": {"twitter": "https://twitter.com/memecoin", "website": "https://memecoin.com", "telegram": ""}, "category": "Meme", "base_price": 0.00002}
 ]
 
-# -------- GENERATE LIVE DATA (no API calls) --------
+# -------- GENERATE SMART SIGNALS --------
 def generate_live_data():
     result = []
     for coin in COINS:
-        # Random price movement within ±3%
-        price = coin['base_price'] * (1 + random.uniform(-0.03, 0.03))
-        # Random 24h change between -8% and +15%
-        change_24h = random.uniform(-8, 15)
-        # Generate a fake sparkline (10 points simulating 7 days)
-        sparkline = []
-        last = price
-        for _ in range(10):
-            last = last * (1 + random.uniform(-0.02, 0.02))
-            sparkline.append(last)
+        # Random price movement
+        price = coin['base_price'] * (1 + random.uniform(-0.04, 0.04))
+        change_24h = round(random.uniform(-8, 18), 2)
         
-        # Calculate risk and reward based on volatility
-        risk = random.randint(20, 80)
-        reward = random.randint(20, 80)
+        # Hype score based on change + random factor
+        hype = 40 + (change_24h * 0.5) + random.randint(-10, 15)
+        hype = max(15, min(99, int(hype)))
         
-        # Hype score based on price change + random factor
-        hype = 50 + (change_24h * 0.5) + random.randint(-10, 10)
-        hype = max(10, min(99, int(hype)))
-        
-        # Signal based on hype and change
-        if hype > 70 and change_24h > 3:
+        # --- SIGNAL LOGIC (gives a mix of BUY, HOLD, SELL) ---
+        if change_24h > 8 and hype > 65:
             signal = 'buy'
-        elif hype < 40 and change_24h < -5:
+        elif change_24h > 5 and hype > 55:
+            signal = 'buy'
+        elif change_24h < -4 and hype < 50:
+            signal = 'sell'
+        elif change_24h < -6:
             signal = 'sell'
         else:
             signal = 'hold'
         
+        # If it's a buy or sell, add extra confidence (for the UI)
+        if signal == 'buy':
+            signal_label = 'BUY'
+        elif signal == 'sell':
+            signal_label = 'SELL'
+        else:
+            signal_label = 'HOLD'
+        
+        # Generate sparkline
+        sparkline = []
+        last = price
+        for _ in range(10):
+            last = last * (1 + random.uniform(-0.02, 0.02))
+            sparkline.append(round(last, 10))
+        
         result.append({
             **coin,
             'price': round(price, 8),
-            'change_24h': round(change_24h, 2),
+            'change_24h': change_24h,
             'hype': hype,
             'signal': signal,
-            'risk': risk,
-            'reward': reward,
-            'sparkline': [round(p, 8) for p in sparkline],
+            'signal_label': signal_label,
+            'risk': random.randint(20, 80),
+            'reward': random.randint(20, 80),
+            'sparkline': sparkline,
             'volume': int(price * random.randint(1e6, 1e8)),
             'mcap': int(price * random.randint(1e9, 1e11)),
-            'mentions': random.randint(0, 5000)
+            'mentions': random.randint(100, 5000)
         })
     return result
 
@@ -82,18 +90,13 @@ def index():
 
 @app.route('/test')
 def test():
-    return jsonify({
-        'status': 'ok',
-        'message': 'Dashboard is running with generated data.',
-        'note': 'No external API calls are being made.'
-    })
+    return jsonify({'status': 'ok', 'message': 'Dashboard running with generated data.'})
 
 @app.route('/api/dashboard')
 def dashboard():
     data = generate_live_data()
-    # Sort by hype descending
+    # Sort by hype
     data.sort(key=lambda x: x['hype'], reverse=True)
-    # Assign ranks
     for idx, coin in enumerate(data):
         coin['rank'] = idx + 1
     return jsonify(data)
